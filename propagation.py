@@ -1,4 +1,4 @@
-"""Rigorous polynomial shooting from s_in or s_out to the matching radius s_m.
+"""Rigorous polynomial shooting from r_in or r_out to the matching radius r_m.
 Returns the four state pairs P, P_A, P_Omega, P_K approximating the finite
 profile state (Q, Q') and its A-, Omega-, and K-derivatives on the step.
 """
@@ -9,8 +9,8 @@ from helpers import (require, norm, pair_radius, polynomial_norm,
 I = acb(0, 1)
 
 
-def polynomial_segment(s_star, h, initial_columns, omega_0, taylor_degree, d):
-    r"""Build midpoint Taylor polynomials on s=s_star+h*u, 0<=u<=1 to Q, Q' and
+def polynomial_segment(r_star, h, initial_columns, omega_0, taylor_degree, d):
+    r"""Build midpoint Taylor polynomials on r=r_star+h*u, 0<=u<=1 to Q, Q' and
     their parameter derivatives. It implements the approximate polynomials
     P and P_xi in the manuscript.
 
@@ -30,8 +30,8 @@ def polynomial_segment(s_star, h, initial_columns, omega_0, taylor_degree, d):
         v_series = [
             acb_series([pair[1]], prec=taylor_degree+1)
             for pair in initial_columns]
-        s_series = acb_series([s_star, h], prec=taylor_degree+1)
-        radial_drift = (d-1)/s_series+I*s_series/2
+        r_series = acb_series([r_star, h], prec=taylor_degree+1)
+        radial_drift = (d-1)/r_series+I*r_series/2
         linear_q_coeff = acb(omega_0, spec.similarity_exp)
         for n in range(taylor_degree):
             # Conjugation means conjugation of coefficients, for REAL u.
@@ -71,44 +71,44 @@ def polynomial_segment(s_star, h, initial_columns, omega_0, taylor_degree, d):
         ctx.cap = old_cap
 
 
-def defect_bounds(s_star, h, step_polynomials, omega_0, d):
+def defect_bounds(r_star, h, step_polynomials, omega_0, d):
     r"""Implementation of the upper bounds \delta_0, \delta_A, \delta_\Omega
     and \delta_K in the manuscript. Substitute midpoint Taylor polynomials 
     into the ODE and bound the residuals on 0<=u<=1.
     """
     spec = profile_spec(d)
     conjugate_exp = spec.conjugate_exp
-    s_poly = acb_poly([s_star, h])
-    s_min = min(s_star, s_star+h)
+    r_poly = acb_poly([r_star, h])
+    r_min = min(r_star, r_star+h)
     p_q = step_polynomials[0][0]
     q_conjugate = conjugate_poly(p_q)
     modulus_squared = p_q*q_conjugate
     lower_modulus_power = modulus_squared**(conjugate_exp-1)
     modulus_power = lower_modulus_power*modulus_squared
     conjugate_deriv_term = conjugate_exp*p_q*p_q*lower_modulus_power
-    radial_drift_numerator = (d-1)+(I/2)*s_poly*s_poly
+    radial_drift_numerator = (d-1)+(I/2)*r_poly*r_poly
     linear_q_coeff = acb(omega_0, spec.similarity_exp)
     deltas = []
     for column_index, (p_column_q, p_column_v) in enumerate(step_polynomials):
         q_defect = p_column_q.derivative()-h*p_column_v
-        v_defect = (s_poly*p_column_v.derivative()
+        v_defect = (r_poly*p_column_v.derivative()
                     + h*radial_drift_numerator*p_column_v
-                    + h*s_poly*linear_q_coeff*p_column_q)
+                    + h*r_poly*linear_q_coeff*p_column_q)
         if column_index == 0:
-            v_defect -= h*s_poly*modulus_power*p_q
+            v_defect -= h*r_poly*modulus_power*p_q
         else:
-            v_defect -= h*s_poly*(
+            v_defect -= h*r_poly*(
                 (conjugate_exp+1)*modulus_power*p_column_q
                 + conjugate_deriv_term*conjugate_poly(p_column_q))
             if column_index == 2:
-                v_defect += h*s_poly*p_q
+                v_defect += h*r_poly*p_q
         deltas.append(norm([
             polynomial_norm(q_defect),
-            (polynomial_norm(v_defect)/s_min).upper()]))
+            (polynomial_norm(v_defect)/r_min).upper()]))
     return deltas
 
 
-def initialize(center_data, parameter_box_data, boundary_error):
+def initialize(center_data, parameter_box_data, delta_bd):
     """Separate midpoint rounding, parameter spread, and boundary error."""
     polynomial_columns = [[z.mid() for z in pair] for pair in center_data]
     epsilon_poly = [pair_radius(pair) for pair in center_data]
@@ -119,13 +119,13 @@ def initialize(center_data, parameter_box_data, boundary_error):
     return {"polynomial_columns": polynomial_columns,
             "epsilon_poly": epsilon_poly,
             "parameter_spread": parameter_spread,
-            "boundary_error": boundary_error}
+            "boundary_error": delta_bd}
 
 
-def propagate(initial_data, s_start, s_end, omega_0, omega_interval, rho, d,
+def propagate(initial_data, r_start, r_end, omega_0, omega_interval, rho, d,
               taylor_degree=88):
     r"""Rigorously integrate (q, q') and its (A, \Omega, K) derivatives from
-    s_start to s_end. Apply the polynomial error-propagation estimates to
+    r_start to r_end. Apply the polynomial error-propagation estimates to
     every step.
     """
     spec = profile_spec(d)
@@ -135,38 +135,38 @@ def propagate(initial_data, s_start, s_end, omega_0, omega_interval, rho, d,
     polynomial_columns = initial_data["polynomial_columns"]
     epsilon_poly = initial_data["epsilon_poly"][:]
     parameter_spread = initial_data["parameter_spread"][:]
-    b = initial_data["boundary_error"]
-    require(epsilon_poly[0]+parameter_spread[0]+b < epsilon,
+    delta_bd = initial_data["boundary_error"]
+    require(epsilon_poly[0]+parameter_spread[0]+delta_bd < epsilon,
             "Initial tube exceeded")
-    direction = 1 if s_end > s_start else -1
-    s_star = s_start
+    direction = 1 if r_end > r_start else -1
+    r_star = r_start
     minimum_modulus = None
-    while direction*(s_end-s_star) > 0:
-        step_length = min(max_step, s_star/8, (s_end-s_star).abs_upper())
+    while direction*(r_end-r_star) > 0:
+        step_length = min(max_step, r_star/8, (r_end-r_star).abs_upper())
         h = direction*step_length
         step_polynomials = polynomial_segment(
-            s_star, h, polynomial_columns, omega_0, taylor_degree, d)
-        deltas = defect_bounds(s_star, h, step_polynomials, omega_0, d)
+            r_star, h, polynomial_columns, omega_0, taylor_degree, d)
+        deltas = defect_bounds(r_star, h, step_polynomials, omega_0, d)
         p_q_sup = polynomial_norm(step_polynomials[0][0])
         M_step = (p_q_sup+epsilon).upper()
-        s_min = min(s_star, s_star+h) 
+        r_min = min(r_star, r_star+h)
         logarithmic_norm = (
             (1+omega_interval.abs_upper()+spec.similarity_exp
              + p*M_step**(p-1))/2
-            + ((d-1)/s_min if direction < 0 else 0)).upper()
+            + ((d-1)/r_min if direction < 0 else 0)).upper()
         g = (logarithmic_norm*step_length).exp().upper()
         nonlinear_curvature = (p*(p-1)*M_step**(p-2)).upper()
 
         epsilon_poly_plus = (g*(epsilon_poly[0]+deltas[0])).upper()
         r_Q_plus = (
             g*(parameter_spread[0]+step_length*rho*M_step)).upper()
-        b_plus = (g*b).upper()
+        delta_bd_plus = (g*delta_bd).upper()
         # Hypothesis of Lemma 3.9
         require(
-            epsilon_poly_plus+r_Q_plus+b_plus < epsilon,
-            f"Propagation tube failed at s_*={s_star}, "
+            epsilon_poly_plus+r_Q_plus+delta_bd_plus < epsilon,
+            f"Propagation tube failed at r_*={r_star}, "
             f"epsilon_poly={epsilon_poly_plus}, "
-            f"r_Q={r_Q_plus}, b={b_plus}")
+            f"r_Q={r_Q_plus}, delta_bd={delta_bd_plus}")
  
         epsilon_poly_xi_plus, r_xi_plus = [], []
         for column_index in range(1, 4):
@@ -191,7 +191,7 @@ def propagate(initial_data, s_start, s_end, omega_0, omega_interval, rho, d,
                  - sum((z.abs_upper() for z in p_q.coeffs()[1:]), arb(0))
                  - epsilon).lower()
         require(q_min > 0,
-                f"Propagation nonvanishing failed at s_*={s_star}")
+                f"Propagation nonvanishing failed at r_*={r_star}")
         minimum_modulus = (q_min if minimum_modulus is None
                            else min(minimum_modulus, q_min))
 
@@ -205,12 +205,12 @@ def propagate(initial_data, s_start, s_end, omega_0, omega_interval, rho, d,
             for epsilon_xi, pair
             in zip(epsilon_poly_xi_plus, endpoint_data[1:])]
         parameter_spread = [r_Q_plus]+r_xi_plus
-        b = b_plus
+        delta_bd = delta_bd_plus
         polynomial_columns = [
             [z.mid() for z in pair] for pair in endpoint_data]
-        require(epsilon_poly[0]+r_Q_plus+b < epsilon,
+        require(epsilon_poly[0]+r_Q_plus+delta_bd < epsilon,
                 "Endpoint recentering exceeded tube")
-        s_star += h
+        r_star += h
 
     center_enclosures = [
         [inflate(z, error) for z in pair]
@@ -220,10 +220,10 @@ def propagate(initial_data, s_start, s_end, omega_0, omega_interval, rho, d,
         for pair, error, difference
         in zip(polynomial_columns, epsilon_poly, parameter_spread)]
     return {"center": center_enclosures, "family": family_enclosures,
-            "boundary_error": b,
+            "boundary_error": delta_bd,
             "record": {
                 "center_error": encode(epsilon_poly[0]),
                 "parameter_spread": encode(parameter_spread[0]),
-                "boundary_error": encode(b),
+                "boundary_error": encode(delta_bd),
                 "minimum_modulus": encode(minimum_modulus),
             }}

@@ -4,17 +4,17 @@ from flint import arb, arb_mat
 from helpers import require, matrix_infinity_norm, encode
 
 
-def matching_map(data, s_m):
-    """Evaluate H(q,q') and its parameter Jacobian at the matching radius s_m."""
+def matching_map(data, r_m):
+    """Evaluate H(q,q') and its parameter Jacobian at the matching radius r_m."""
     q, q_prime = data[0]
     require(q.abs_lower() > 0, "Matching denominator can vanish")
-    scaled_log_deriv = s_m*q_prime/q
+    scaled_log_deriv = r_m*q_prime/q
     matching_coords = [
         abs(q).log(), scaled_log_deriv.real, scaled_log_deriv.imag]
     jacobian_cols = []
     for q_deriv, q_prime_deriv in data[1:]:
         relative_q_deriv = q_deriv/q
-        log_deriv_sensitivity = s_m*(
+        log_deriv_sensitivity = r_m*(
             q_prime_deriv/q-q_prime*q_deriv/q**2
         )
         jacobian_cols.append([
@@ -30,34 +30,34 @@ def matching_map(data, s_m):
     return matching_vector, jacobian
 
 
-def matching_boundary_error(flow, s_m):
+def matching_boundary_error(flow, r_m):
     r"""If Q is an exact solution and \tilde{Q} is the truncated-data solution,
     this bounds |H(Q)-H(\tilde{Q})| coordinate by coordinate.
     
-    The lower bound |q|-b keeps the exact quotient well defined.  The same
-    bound for s_m q'/q controls both real and imaginary components.
+    The lower bound |q|-delta_bd keeps the exact quotient well defined.  The same
+    bound for r_m q'/q controls both real and imaginary components.
     """
     q, q_prime = flow["family"][0]
-    boundary_error = flow["boundary_error"]
+    delta_bd = flow["boundary_error"]
     q_lower = q.abs_lower()
-    require(q_lower > boundary_error, "True matching denominator can vanish")
+    require(q_lower > delta_bd, "True matching denominator can vanish")
     log_amplitude_error = (
-        boundary_error/(q_lower-boundary_error)).upper()
+        delta_bd/(q_lower-delta_bd)).upper()
     log_deriv_error = (
-        s_m*boundary_error*(1+q_prime.abs_upper()/q_lower)
-        / (q_lower-boundary_error)).upper()
+        r_m*delta_bd*(1+q_prime.abs_upper()/q_lower)
+        / (q_lower-delta_bd)).upper()
     return [log_amplitude_error, log_deriv_error, log_deriv_error]
 
 
-def brouwer_bounds(inner_flow, outer_flow, s_m, rho):
+def brouwer_bounds(inner_flow, outer_flow, r_m, rho):
     """Verify condition Y + E + Z*rho < rho in the manuscript. 
     """
-    inner_coords, inner_jacobian = matching_map(inner_flow["center"], s_m)
-    outer_coords, outer_jacobian = matching_map(outer_flow["center"], s_m)
+    inner_coords, inner_jacobian = matching_map(inner_flow["center"], r_m)
+    outer_coords, outer_jacobian = matching_map(outer_flow["center"], r_m)
     M = inner_coords-outer_coords
     J = inner_jacobian-outer_jacobian
-    _, inner_box_jacobian = matching_map(inner_flow["family"], s_m)
-    _, outer_box_jacobian = matching_map(outer_flow["family"], s_m)
+    _, inner_box_jacobian = matching_map(inner_flow["family"], r_m)
+    _, outer_box_jacobian = matching_map(outer_flow["family"], r_m)
     J_box = inner_box_jacobian-outer_box_jacobian
 
     # The midpoint of the interval inverse is the fixed real matrix B.
@@ -70,7 +70,7 @@ def brouwer_bounds(inner_flow, outer_flow, s_m, rho):
     identity = arb_mat([[int(i == j) for j in range(3)] for i in range(3)])
     Z = matrix_infinity_norm(identity-B*J_box)
     e_inner, e_outer = [
-        matching_boundary_error(flow, s_m)
+        matching_boundary_error(flow, r_m)
         for flow in (inner_flow, outer_flow)]
     e_sum = [
         (inner+outer).upper()

@@ -13,8 +13,8 @@ from matching import brouwer_bounds
 
 HERE = Path(__file__).resolve().parent
 BITS = 896
-S_IN = arb(1) / 8  # Inner radius s_in.
-S_OUT = arb(48)  # Outer radius s_out.
+R_IN = arb(1) / 8  # Inner radius r_in.
+R_OUT = arb(48)  # Outer radius r_out.
 
 
 def prove(d):
@@ -27,35 +27,35 @@ def prove(d):
     center = [arb(candidate[name]).mid() for name in ("A", "omega", "K")]
     rho = arb(2) ** -spec.rho_bits
     box = [arb(value, rho) for value in center]
-    s_m = arb(spec.s_m)
+    r_m = arb(spec.r_m)
 
     origin_error, origin_record = certify_origin(
-        box, S_IN, spec.inner_order, d)
+        box, R_IN, spec.inner_order, d)
     exterior_error, exterior_record = certify_exterior(
-        box, S_OUT, spec.outer_order, d)
+        box, R_OUT, spec.outer_order, d)
 
     flows = []
     flow_records = []
-    for data, s_start, order, error, degree in (
-        (origin_data, S_IN, spec.inner_order,
+    for data, r_start, order, error, degree in (
+        (origin_data, R_IN, spec.inner_order,
          origin_error, spec.inner_degree),
-        (tail_data, S_OUT, spec.outer_order,
+        (tail_data, R_OUT, spec.outer_order,
          exterior_error, spec.outer_degree),
     ):
         initial = initialize(
-            data(center, s_start, order, d),
-            data(box, s_start, order, d),
+            data(center, r_start, order, d),
+            data(box, r_start, order, d),
             error,
         )
         flow = propagate(
-            initial, s_start, s_m, center[1], box[1], rho, d,
+            initial, r_start, r_m, center[1], box[1], rho, d,
             taylor_degree=degree,
         )
         flows.append(flow)
         flow_records.append(flow["record"])
 
     brouwer_record = brouwer_bounds(
-        flows[0], flows[1], s_m, rho)
+        flows[0], flows[1], r_m, rho)
     return {
         "d": d,
         "p": spec.p,

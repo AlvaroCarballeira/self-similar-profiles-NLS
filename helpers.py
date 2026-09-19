@@ -24,7 +24,7 @@ class ProfileSpec:
     p: int
     omega_bound: str       # Bound |Omega| \leq Omega_bd in the manuscript.
     rho_bits: int          # Parameter-cube radius is rho = 2^(-rho_bits).
-    s_m: int              # Matching radius where the origin and exterior shots meet.
+    r_m: int              # Matching radius where the origin and exterior shots meet.
     inner_order: int       # Truncation order of the regular-origin expansion.
     outer_order: int       # Truncation order of the pure-slow tail expansion.
     inner_degree: int      # Taylor degree for propagation from the origin.

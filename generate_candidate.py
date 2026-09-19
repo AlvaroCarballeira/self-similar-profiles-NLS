@@ -19,25 +19,25 @@ from scipy.optimize import root
 
 from helpers import profile_spec
 
-S_M = 8  # Matching radius s_m for the numerical search.
-S_OUT = 48  # Outer radius s_out.
+R_M = 8  # Matching radius r_m for the numerical search.
+R_OUT = 48  # Outer radius r_out.
 ORIGIN_SERIES_ORDER = 48
 TAIL_SERIES_ORDER = 128
 NEWTON_ODE_TOLERANCE = "1e-60"
 FINAL_ODE_TOLERANCE = "1e-145"
 
 # The branch search uses cheaper boundaries and ordinary double precision.
-COARSE_S_IN = 0.02
-COARSE_S_OUT = 32.0
+COARSE_R_IN = 0.02
+COARSE_R_OUT = 32.0
 COARSE_ORIGIN_ORDER = 12
 COARSE_TAIL_ORDER = 18
 
 
-def origin_data(params, s_in, series_order, d,
+def origin_data(params, r_in, series_order, d,
                 high_precision=True, p=None):
     """Build origin data using ordinary or multiprecision arithmetic.
     Uses the recurrence in Section 3.2 of the manuscript.
-    Output is (q, q') at the inner radius s_in.
+    Output is (q, q') at the inner radius r_in.
     """
     A, omega, _ = params
     if p is None:
@@ -77,19 +77,19 @@ def origin_data(params, s_in, series_order, d,
              -(omega+1j*(similarity_exp+n))*c_coeffs[n])
             / (2*(n+1)*(2*n+d)))
     c_coeffs = [A*z for z in c_coeffs]
-    q = sum(z*s_in**(2*n) for n, z in enumerate(c_coeffs))
-    q_prime = sum(2*n*c_coeffs[n]*s_in**(2*n-1)
+    q = sum(z*r_in**(2*n) for n, z in enumerate(c_coeffs))
+    q_prime = sum(2*n*c_coeffs[n]*r_in**(2*n-1)
                   for n in range(1, len(c_coeffs)))
     if high_precision:
         return q, q_prime
     return np.array([q, q_prime])
 
 
-def tail_data(params, s_out, series_order, d,
+def tail_data(params, r_out, series_order, d,
               high_precision=True, p=None):
     """Build tail data using ordinary or multiprecision arithmetic.
     Uses the recurrence in Section 3.1 of the manuscript.
-    Output is (q, q') at the outer radius s_out.
+    Output is (q, q') at the outer radius r_out.
     """
     _, omega, K = params
     if p is None:
@@ -119,14 +119,14 @@ def tail_data(params, s_out, series_order, d,
                +(d-2-2*n)*f_coeffs[n])
         l_coeffs.append(1j*(K*E_coeffs[n]-H_n)/(n+1))
         f_coeffs.append(-2*(n+1)*l_coeffs[-1])
-    log_q = (similarity_exp*logarithm(K)+beta*logarithm(s_out)
-             +sum(l_coeffs[n]*s_out**(-2*n) for n in range(1, series_order+1)))
+    log_q = (similarity_exp*logarithm(K)+beta*logarithm(r_out)
+             +sum(l_coeffs[n]*r_out**(-2*n) for n in range(1, series_order+1)))
     q = exponential(log_q)
     scaled_log_deriv = sum(
-        z*s_out**(-2*n) for n, z in enumerate(f_coeffs))
+        z*r_out**(-2*n) for n, z in enumerate(f_coeffs))
     if high_precision:
-        return q, q*scaled_log_deriv/s_out
-    return np.array([q, q*scaled_log_deriv/s_out])
+        return q, q*scaled_log_deriv/r_out
+    return np.array([q, q*scaled_log_deriv/r_out])
 
 
 def find_coarse_root(param_guess, d, p):
@@ -139,7 +139,7 @@ def find_coarse_root(param_guess, d, p):
     solver_coords = np.array([(p-1)*log_A, (p-1)*omega, log_K])
     shot_count = 0
 
-    def propagate_to_match(shooting_state, s_start, omega):
+    def propagate_to_match(shooting_state, r_start, omega):
         """Integrate one coarse shot to the matching radius."""
         def profile_rhs(radius, state_values):
             q, q_prime = state_values
@@ -149,11 +149,11 @@ def find_coarse_root(param_guess, d, p):
                 -(omega+1j/(p-1))*q+abs(q)**(p-1)*q])
 
         integration_result = solve_ivp(
-            profile_rhs, (s_start, S_M), shooting_state,
+            profile_rhs, (r_start, R_M), shooting_state,
             method="DOP853", rtol=2e-10,
             atol=2e-12*min(abs(shooting_state[0]), 1))
         if (not integration_result.success
-                or integration_result.t[-1] != S_M):
+                or integration_result.t[-1] != R_M):
             raise RuntimeError("search shot did not reach the matching radius")
         return integration_result.y[:, -1]
 
@@ -172,21 +172,21 @@ def find_coarse_root(param_guess, d, p):
             raise ValueError("search left its parameter bounds")
         params = np.array([np.exp(log_A), omega, np.exp(log_K)])
         inner_data = propagate_to_match(
-            origin_data(params, COARSE_S_IN,
+            origin_data(params, COARSE_R_IN,
                         COARSE_ORIGIN_ORDER, d,
                         high_precision=False, p=p),
-            COARSE_S_IN, omega)
+            COARSE_R_IN, omega)
         outer_data = propagate_to_match(
-            tail_data(params, COARSE_S_OUT,
+            tail_data(params, COARSE_R_OUT,
                       COARSE_TAIL_ORDER, d,
                       high_precision=False, p=p),
-            COARSE_S_OUT, omega)
+            COARSE_R_OUT, omega)
         inner_q, inner_q_prime = inner_data
         outer_q, outer_q_prime = outer_data
         inner_scaled_log_deriv = (
-            S_M*inner_q_prime/inner_q)
+            R_M*inner_q_prime/inner_q)
         outer_scaled_log_deriv = (
-            S_M*outer_q_prime/outer_q)
+            R_M*outer_q_prime/outer_q)
         inner_matching_coords = np.array([
             np.log(abs(inner_q)), inner_scaled_log_deriv.real,
             inner_scaled_log_deriv.imag])
@@ -306,11 +306,11 @@ def shooting_rhs(radius, shooting_state, d, omega):
     return derivatives
 
 
-def shoot_to_match(params, boundary_data, s_start, series_order, d,
+def shoot_to_match(params, boundary_data, r_start, series_order, d,
                    taylor_degree, ode_tolerance):
     """Build boundary data, propagate it, and evaluate the matching map."""
     # Append the derivatives of (q, q') with respect to A, Omega, and K.
-    shooting_state = list(boundary_data(params, s_start, series_order, d))
+    shooting_state = list(boundary_data(params, r_start, series_order, d))
     for param_ind in range(3):
         for component_index in range(2):
             def boundary_component(
@@ -318,16 +318,16 @@ def shoot_to_match(params, boundary_data, s_start, series_order, d,
                 varied_params = params[:]
                 varied_params[param_index] = x
                 return boundary_data(
-                    varied_params, s_start, series_order,d)[component_ind]
+                    varied_params, r_start, series_order,d)[component_ind]
             shooting_state.append(
                 mp.diff(boundary_component, params[param_ind]))
 
     # Propagate in a nonnegative travel variable, including for inward shots.
-    s_m = mp.mpf(S_M)
-    integration_direction = 1 if s_m > s_start else -1
+    r_m = mp.mpf(R_M)
+    integration_direction = 1 if r_m > r_start else -1
 
     def directed_rhs(travel, state):
-        radius = s_start+integration_direction*travel
+        radius = r_start+integration_direction*travel
         return [integration_direction*value for value in
                 shooting_rhs(radius, state, d, params[1])]
 
@@ -335,11 +335,11 @@ def shoot_to_match(params, boundary_data, s_start, series_order, d,
     solution = mp.odefun(
         directed_rhs, mp.zero, shooting_state,
         tol=mp.mpf(ode_tolerance), degree=taylor_degree)
-    shooting_state = solution(abs(s_m-s_start))
+    shooting_state = solution(abs(r_m-r_start))
 
     # Evaluate the phase-invariant matching values.
     q, q_prime = shooting_state[:2]
-    scaled_log_deriv = s_m*q_prime/q
+    scaled_log_deriv = r_m*q_prime/q
     matching_coords = mp.matrix([
         mp.log(abs(q)), mp.re(scaled_log_deriv), mp.im(scaled_log_deriv)])
 
@@ -349,7 +349,7 @@ def shoot_to_match(params, boundary_data, s_start, series_order, d,
         q_sensitivity, q_prime_sensitivity = (
             shooting_state[2+2*param_ind:4+2*param_ind])
         relative_q_sensitivity = q_sensitivity/q
-        log_deriv_sensitivity = s_m*(
+        log_deriv_sensitivity = r_m*(
             q_prime_sensitivity/q-q_prime*q_sensitivity/q**2)
         jacobian_column = (
             mp.re(relative_q_sensitivity),
@@ -376,7 +376,7 @@ def main():
             params, origin_data, mp.mpf(1)/8, ORIGIN_SERIES_ORDER,
             d, 40, NEWTON_ODE_TOLERANCE)
         outer_matching_coords, outer_matching_jacobian = shoot_to_match(
-            params, tail_data, mp.mpf(S_OUT),
+            params, tail_data, mp.mpf(R_OUT),
             TAIL_SERIES_ORDER, d, 40, NEWTON_ODE_TOLERANCE)
         matching_residual = (
             inner_matching_coords-outer_matching_coords)
@@ -399,7 +399,7 @@ def main():
         params, origin_data, mp.mpf(1)/8, ORIGIN_SERIES_ORDER,
         d, 72, FINAL_ODE_TOLERANCE)
     outer_matching_coords, outer_matching_jacobian = shoot_to_match(
-        params, tail_data, mp.mpf(S_OUT), TAIL_SERIES_ORDER,
+        params, tail_data, mp.mpf(R_OUT), TAIL_SERIES_ORDER,
         d, 72, FINAL_ODE_TOLERANCE)
     matching_residual = (
         inner_matching_coords-outer_matching_coords)
