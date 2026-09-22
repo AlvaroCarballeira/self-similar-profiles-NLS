@@ -1,6 +1,6 @@
 # Computer-assisted proof code: Self-similar profiles for energy-supercritical, defocusing NLS.
 
-This code accompanies the article *Blow-up for energy supercritical defocusing nonlinear Schrödinger equations in dimensions three, four and five*.
+This code accompanies the article [Blow-up for energy supercritical defocusing nonlinear Schrödinger equations in dimensions three, four and five](https://arxiv.org/abs/2609.23685v1).
 
 ## Authors
 
